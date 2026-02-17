@@ -41,9 +41,9 @@ apt-get autoremove -y
 
 # Enable noble-proposed repository
 echo -e "${YELLOW}Enabling noble-proposed repository temporarily...${NC}"
-cat > /etc/apt/sources.list.d/noble-proposed.list <<EOFINNER
+cat > /etc/apt/sources.list.d/noble-proposed.list <<EOF
 deb http://archive.ubuntu.com/ubuntu noble-proposed main restricted universe multiverse
-EOFINNER
+EOF
 
 # Update package lists
 apt-get update
@@ -59,12 +59,12 @@ apt-get update
 
 # Blacklist conflicting drivers
 echo -e "${YELLOW}Blacklisting conflicting drivers (b43, ssb, bcma)...${NC}"
-cat > /etc/modprobe.d/blacklist-broadcom.conf <<EOFINNER
+cat > /etc/modprobe.d/blacklist-broadcom.conf <<EOF
 # Blacklist conflicting Broadcom drivers
 blacklist b43
 blacklist ssb
 blacklist bcma
-EOFINNER
+EOF
 
 # Load the wl driver
 echo -e "${YELLOW}Loading wl driver...${NC}"
