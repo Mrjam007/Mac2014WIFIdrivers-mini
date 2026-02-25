@@ -8,7 +8,7 @@ set -euo pipefail  # Exit on error, undefined variables, and pipeline failures
 PROPOSED_FILE=""
 
 # Guarantee repo cleanup even if the script crashes
-trap 'rm -f "$PROPOSED_FILE"; apt update' EXIT
+trap '[ -n "$PROPOSED_FILE" ] && rm -f "$PROPOSED_FILE"; apt update' EXIT
 
 # Colors for output
 RED='\033[0;31m'
