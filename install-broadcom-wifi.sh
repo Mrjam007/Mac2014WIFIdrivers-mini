@@ -2,7 +2,13 @@
 # Broadcom Wi-Fi Driver Installer for Mac Mini 7,1 (BCM4360)
 # For Ubuntu 24.04 (Noble) and derivatives
 
-set -e  # Exit on error
+set -euo pipefail  # Exit on error, undefined variables, and pipeline failures
+
+# Initialize PROPOSED_FILE early so the trap can always reference it safely
+PROPOSED_FILE=""
+
+# Guarantee repo cleanup even if the script crashes
+trap '[ -n "$PROPOSED_FILE" ] && rm -f "$PROPOSED_FILE"; apt update' EXIT
 
 # Colors for output
 RED='\033[0;31m'
@@ -28,7 +34,7 @@ fi
 
 # Check internet connectivity
 echo -e "${YELLOW}Checking internet connection...${NC}"
-if ! ping -c 1 archive.ubuntu.com &> /dev/null; then
+if ! curl -fsI http://archive.ubuntu.com > /dev/null; then
     echo -e "${RED}No internet connection. Please connect via USB adapter or Ethernet and try again.${NC}"
     exit 1
 fi
@@ -60,6 +66,10 @@ EOF
 
 # Update package lists
 apt update
+
+# Install DKMS build dependencies to avoid "Error! Bad return status for module build"
+echo -e "${YELLOW}Installing build dependencies...${NC}"
+apt install -y build-essential dkms linux-headers-$(uname -r)
 
 # Install the fixed driver from proposed
 echo -e "${YELLOW}Installing broadcom-sta-dkms from ${UBUNTU_CODENAME}-proposed...${NC}"
@@ -106,8 +116,13 @@ update-initramfs -u
 echo -e "${GREEN}Installation complete!${NC}"
 if lspci -nn | grep -qi "14e4:43a0"; then
     if lsmod | grep -q wl; then
-        echo -e "${GREEN}Driver loaded successfully. Your internal Wi-Fi interface should appear as wlp2s0.${NC}"
-        ip link show | grep -o 'wl[^:]*' || echo "No wireless interface found yet. Try rebooting."
+        echo -e "${GREEN}Driver loaded successfully.${NC}"
+        WIFI_IFACE=$(ip link show | grep -Eo 'wl[a-z0-9]+' | head -1)
+        if [ -n "$WIFI_IFACE" ]; then
+            echo -e "${GREEN}Wi-Fi interface detected: ${WIFI_IFACE}${NC}"
+        else
+            echo "No wireless interface found yet. Try rebooting."
+        fi
     else
         echo -e "${RED}Driver not loaded. Check dmesg for errors.${NC}"
     fi
