@@ -1,6 +1,18 @@
 # Mac Mini 2014 WiFi Drivers Installation Script
 
+> **Tested on:**
+> - Ubuntu 24.04 LTS (Noble)
+> - Kernel 6.8+
+> - Mac Mini 7,1 (Late 2014) — BCM4360 (14e4:43a0)
+
 This repository contains a script to install WiFi drivers for the **Mac Mini 7,1 (Late 2014)** when running **Ubuntu 24.04 (Noble)**. The Mac Mini 2014 uses a **Broadcom BCM4360** WiFi card, which requires proprietary drivers to work properly on Linux systems.
+
+## Quick Start
+
+1. Connect via Ethernet or USB WiFi adapter
+2. Clone or download this repository
+3. Run: `sudo ./install-broadcom-wifi.sh`
+4. Reboot
 
 ## ⚠️ Important Prerequisites
 
@@ -18,24 +30,40 @@ The Mac Mini 2014's built-in WiFi card will not work until the drivers are insta
 - **Active internet connection** (via USB WiFi or Ethernet)
 - **Root/sudo privileges**
 - At least 500MB of free disk space
-- **Secure Boot disabled** (see below for details)
+- **Secure Boot** may need to be disabled or MOK enrolled (see below for details)
+
+## Features
+
+- Strict error handling (`set -euo pipefail`)
+- Crash-safe repository cleanup (trap-based)
+- Automatic DKMS dependency installation
+- Secure Boot detection
+- Idempotent blacklist handling
+- Dynamic OS codename detection
 
 ## What This Script Does
 
 The `install-broadcom-wifi.sh` script performs the following steps:
 
 1. **Checks prerequisites**: Verifies root privileges and internet connectivity
-2. **Detects Ubuntu version**: Ensures you're running Ubuntu 24.04 (Noble)
+2. **Detects Ubuntu version**: Dynamically detects the OS codename (e.g., Noble)
 3. **Cleans up old installations**: Removes any previously failed driver installations
-4. **Enables noble-proposed repository**: Temporarily enables this repository to access the fixed driver
+4. **Enables `${codename}-proposed` repository**: Temporarily enables this repository to access the fixed driver — it is automatically removed even if the script exits unexpectedly
 5. **Installs broadcom-sta-dkms**: Downloads and installs the proprietary Broadcom driver package
-6. **Disables noble-proposed**: Removes the repository after installation
+6. **Disables `${codename}-proposed`**: Removes the repository after installation
 7. **Blacklists conflicting drivers**: Prevents b43, ssb, and bcma drivers from interfering
 8. **Loads the wl driver**: Activates the Broadcom wireless driver
 9. **Updates initramfs**: Ensures the driver loads on next boot
-10. **Verifies installation**: Checks if the WiFi interface (wlp2s0) is available
+10. **Verifies installation**: Checks if a WiFi interface is available
 
-After installation, your WiFi interface will appear as **wlp2s0**.
+After installation, your WiFi interface will typically appear as something like **wlp2s0**, but the exact name may vary depending on PCI enumeration order and kernel version.
+
+## What This Script Does NOT Do
+
+- Does not modify firmware
+- Does not permanently enable the `-proposed` repository
+- Does not downgrade the kernel
+- Does not support other Broadcom chipset models
 
 ## Installation Instructions
 
@@ -69,7 +97,7 @@ sudo ./install-broadcom-wifi.sh
 The script will automatically:
 - Check for root privileges and internet connectivity
 - Clean up any old driver installations
-- Temporarily enable the noble-proposed repository
+- Temporarily enable the `${codename}-proposed` repository (automatically removed on exit)
 - Install the broadcom-sta-dkms package with the fixed driver
 - Blacklist conflicting drivers (b43, ssb, bcma)
 - Load the wl (Broadcom wireless) driver
@@ -91,10 +119,10 @@ sudo reboot
 After rebooting, verify that your WiFi is working:
 
 ```bash
-# Check if the WiFi interface (wlp2s0) is detected
+# Check if the WiFi interface is detected
 ip link show
 
-# Look for the wlp2s0 interface
+# Look for an interface starting with "wl" (e.g., wlp2s0)
 ip link show wlp2s0
 
 # Check for wireless networks
@@ -104,15 +132,15 @@ nmcli device wifi list
 iwconfig
 ```
 
-Your built-in WiFi should now appear as **wlp2s0** and you can connect to wireless networks!
+Your built-in WiFi should now appear as a `wl*` interface (typically **wlp2s0**) and you can connect to wireless networks!
 
 ## Troubleshooting
 
 ### Secure Boot Issues
 
-**Most Common Issue**: If the script fails to load the wl module with a message about "Lockdown" in dmesg, you need to disable Secure Boot.
+**Most Common Issue**: If the script fails to load the wl module with a message about "Lockdown" in dmesg, Secure Boot may be blocking the driver.
 
-The wl driver is a proprietary module that cannot be loaded when Secure Boot is enabled. To disable Secure Boot on Mac Mini:
+If Secure Boot is enabled, the proprietary `wl` module may fail to load. You may need to disable Secure Boot or enroll a Machine Owner Key (MOK). To disable Secure Boot on Mac Mini:
 
 1. **Restart** your Mac Mini
 2. Hold **Cmd+R** during boot to enter Recovery Mode
@@ -123,14 +151,14 @@ The wl driver is a proprietary module that cannot be loaded when Secure Boot is 
 
 ### Script Reports "No internet connection"
 
-The script checks connectivity by pinging archive.ubuntu.com. If this fails:
+The script checks connectivity using an HTTP request to `archive.ubuntu.com`. If this fails:
 
 ```bash
 # Test your connection manually
-ping -c 4 8.8.8.8
+curl -I http://archive.ubuntu.com
 
-# If that works but archive.ubuntu.com doesn't, try:
-ping -c 4 google.com
+# If that fails, check basic connectivity:
+ping -c 4 8.8.8.8
 
 # Check your DNS settings
 cat /etc/resolv.conf
@@ -140,7 +168,7 @@ Make sure your USB WiFi adapter or Ethernet cable is properly connected.
 
 ### WiFi Interface Not Detected After Reboot
 
-If the wlp2s0 interface doesn't appear after rebooting:
+If no `wl*` interface (e.g., wlp2s0) appears after rebooting:
 
 1. Check if the driver module is loaded:
 ```bash
@@ -174,25 +202,26 @@ sudo modprobe -r b43 ssb bcma
 sudo modprobe wl
 ```
 
-### Script Fails on Non-Ubuntu 24.04 Systems
+### Script Fails on Unsupported Ubuntu Versions
 
-The script is specifically designed for Ubuntu 24.04 (Noble) and uses the noble-proposed repository. If you're running a different version:
+The script dynamically detects your Ubuntu codename and uses the corresponding `${codename}-proposed` repository. If you're running a version other than Ubuntu 24.04 (Noble):
 
 - The script will show a warning but continue
-- You may need to modify the repository lines in the script
+- You may need to verify that the `${codename}-proposed` repository exists for your version
 - Consider upgrading to Ubuntu 24.04 for best compatibility
 
 ### WiFi Works But Connection is Unstable
 
 1. Check signal strength:
 ```bash
-iwconfig wlp2s0
+iwconfig
 ```
 
 2. Check for interference - Mac Mini WiFi can be sensitive to USB 3.0 devices nearby
 
 3. Try disabling power management for the WiFi:
 ```bash
+# Replace wlp2s0 with your actual interface name from `ip link show`
 sudo iwconfig wlp2s0 power off
 ```
 
@@ -210,28 +239,25 @@ sudo reboot
 
 ## Supported Distributions
 
-This script is specifically designed for:
+This script is intended specifically for the **Mac Mini 7,1 (Late 2014)** and is designed for:
 - **Ubuntu 24.04 (Noble)** - Primary target, fully tested
 - Ubuntu derivatives based on 24.04 (Kubuntu, Xubuntu, Ubuntu MATE, etc.)
 
-**Note**: The script uses the `noble-proposed` repository, which is specific to Ubuntu 24.04. If you're running a different Ubuntu version or Debian-based distribution, you may need to:
-- Modify the repository references in the script
-- Use alternative installation methods
-- Consider upgrading to Ubuntu 24.04
+**Note**: The script dynamically detects your Ubuntu codename and enables the `${codename}-proposed` repository during installation. The repository is automatically removed afterwards, even if the script exits unexpectedly. If you're running a different Ubuntu version or Debian-based distribution, the corresponding `-proposed` repository must exist for your codename.
 
 ## Known Issues
 
-- **Secure Boot**: The proprietary wl driver cannot be loaded with Secure Boot enabled. You must disable Secure Boot in the Mac's Startup Security Utility.
+- **Secure Boot**: If Secure Boot is enabled, the proprietary `wl` driver may fail to load. You may need to disable Secure Boot in the Mac's Startup Security Utility or enroll a Machine Owner Key (MOK).
 - **USB 3.0 interference**: USB 3.0 devices plugged into the Mac Mini can interfere with WiFi signal quality (known hardware issue). Try using USB 2.0 ports or devices if you experience connectivity issues.
-- **noble-proposed requirement**: The script requires the noble-proposed repository, which is specific to Ubuntu 24.04. Other distributions need script modifications.
-- **Interface naming**: The WiFi interface will always be named `wlp2s0` on Mac Mini 7,1
+- **Proposed repository**: The script temporarily enables the `${codename}-proposed` repository and automatically removes it after installation. It is safe to use.
+- **Interface naming**: The WiFi interface will typically appear as something like `wlp2s0`, but the exact name may vary depending on PCI enumeration order and kernel version.
 
 ## Security Considerations
 
 - **Review before running**: Always review scripts before running them with sudo privileges
 - **Proprietary drivers**: This script installs proprietary Broadcom drivers (wl module)
-- **Secure Boot**: You must disable Secure Boot for the driver to work, which reduces boot security
-- **Repository security**: The script temporarily enables noble-proposed, which contains pre-release packages
+- **Secure Boot**: If Secure Boot is enabled, the driver may not load. You may need to disable Secure Boot or enroll a MOK, which may reduce boot security
+- **Repository security**: The script temporarily enables the `${codename}-proposed` repository, which contains pre-release packages. It is automatically removed after installation.
 - **System updates**: Keep your system updated for security patches
 - **Trusted source**: Make sure to download the script from this official repository only
 
@@ -239,9 +265,9 @@ This script is specifically designed for:
 
 For those interested in the technical details:
 
-1. **Repository Management**: The script temporarily adds `/etc/apt/sources.list.d/noble-proposed.list` to access pre-release packages with fixes for the BCM4360 driver.
+1. **Repository Management**: The script dynamically detects your Ubuntu codename and temporarily adds `/etc/apt/sources.list.d/${codename}-proposed-temp.list` to access pre-release packages with fixes for the BCM4360 driver. The file is automatically removed even if the script crashes.
 
-2. **Package Installation**: Uses `apt-get install -y -t noble-proposed broadcom-sta-dkms` to install the specific fixed version.
+2. **Package Installation**: Uses `apt-get install -y -t ${codename}-proposed broadcom-sta-dkms` to install the specific fixed version.
 
 3. **Driver Conflicts**: Creates `/etc/modprobe.d/blacklist-broadcom.conf` to prevent the open-source b43, ssb, and bcma drivers from loading, as they conflict with the proprietary wl driver.
 
@@ -274,4 +300,4 @@ Created for the Mac Mini 2014 Linux community. Special thanks to all contributor
 
 ---
 
-**Note**: This script is specifically for the Mac Mini 2014 model. Other Mac models may use different WiFi hardware and require different drivers.
+**Note**: This script is intended specifically for the Mac Mini 7,1 (Late 2014). Other Mac models may use different WiFi hardware and require different drivers.
